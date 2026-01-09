@@ -57,6 +57,15 @@ def favicon() -> Response:
     return Response(status_code=204)
 
 
+@app.get("/static/{filename}")
+def static_file(filename: str) -> Response:
+    from fastapi.responses import FileResponse
+    path = os.path.join("app/static", filename)
+    if os.path.exists(path):
+        return FileResponse(path)
+    return Response(status_code=404)
+
+
 @app.get("/", response_class=HTMLResponse)
 def home() -> str:
     return """<!doctype html>
@@ -170,9 +179,23 @@ def home() -> str:
     }
     .actions {
       display: flex;
-      gap: 8px;
+      gap: 12px;
       align-items: center;
       margin-top: 10px;
+    }
+    .action-icon {
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      opacity: 0.6;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .action-icon:hover {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+    .action-icon:active {
+      transform: scale(0.95);
     }
     .meta {
       font-size: 12px;
@@ -190,6 +213,14 @@ def home() -> str:
       padding: 4px 8px;
       border-radius: 999px;
       background: #f1e7da;
+    }
+    .paper-link {
+        text-decoration: none;
+        color: inherit;
+        cursor: pointer;
+    }
+    .paper-link:hover {
+        color: var(--accent);
     }
     .mono {
       font-family: "IBM Plex Mono", "Menlo", monospace;
@@ -455,33 +486,37 @@ def home() -> str:
       items.forEach(item => {
         const card = document.createElement("div");
         card.className = "result-card";
-        const selectId = `action-${item.arxiv_id.replace(/[^a-zA-Z0-9]/g, "")}`;
+        card.id = `card-${item.arxiv_id}`;
         const tags = (item.categories || []).slice(0, 6).map(c => `<span class='tag'>${c}</span>`).join("");
         const citations = item.citations_count != null ? ` · 引用 ${item.citations_count}` : "";
         const pagerank = item.pagerank_score != null ? ` · PR ${item.pagerank_score.toFixed(4)}` : "";
+        const absUrl = item.abs_url || `https://arxiv.org/abs/${item.arxiv_id}`;
+        
         card.innerHTML = `
-          <h3>${item.title}</h3>
+          <h3><a href="${absUrl}" target="_blank" class="paper-link" onclick="submitAction('${item.arxiv_id}', 'view', false)">${item.title}</a></h3>
           <div class="meta">${item.arxiv_id} · ${item.primary_category} · ${item.updated_at}${citations}${pagerank}</div>
           <div>${item.abstract || ""}</div>
           <div class="tags">${tags}</div>
           <div class="mono">score: ${item.score.toFixed(4)}\\nexplain: ${JSON.stringify(item.explain.scores)}</div>
           <div class="actions">
-            <select id="${selectId}">
-              <option value="view">view</option>
-              <option value="like">like</option>
-              <option value="dislike">dislike</option>
-              <option value="save">save</option>
-              <option value="hide">hide</option>
-            </select>
-            <button class="btn" onclick="submitAction('${item.arxiv_id}', '${selectId}')">提交反馈</button>
+             <img src="/static/thumb up.png" title="Like" class="action-icon" onclick="submitAction('${item.arxiv_id}', 'like')">
+             <img src="/static/save.png" title="Save" class="action-icon" onclick="submitAction('${item.arxiv_id}', 'save')">
+             <img src="/static/thumb down.png" title="Dislike" class="action-icon" onclick="submitAction('${item.arxiv_id}', 'dislike')">
+             <img src="/static/hide.webp" title="Hide" class="action-icon" onclick="submitAction('${item.arxiv_id}', 'hide')">
           </div>
         `;
         container.appendChild(card);
       });
     }
 
-    async function submitAction(arxivId, selectId) {
-      const action = byId(selectId).value;
+    async function submitAction(arxivId, action, refreshProfile=true) {
+      if (action === 'hide') {
+         const card = document.getElementById(`card-${arxivId}`);
+         if (card) {
+             card.style.display = 'none';
+         }
+      }
+
       const payload = { user_id: byId("userId").value, arxiv_id: arxivId, action };
       const res = await api("/event", {
         method: "POST",
@@ -489,7 +524,9 @@ def home() -> str:
         body: JSON.stringify(payload)
       });
       byId("eventOutput").textContent = JSON.stringify(res, null, 2);
-      loadProfile();
+      if (refreshProfile) {
+          loadProfile();
+      }
     }
 
     async function loadProfile() {
