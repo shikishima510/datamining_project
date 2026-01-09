@@ -135,8 +135,11 @@ def _recency_score(updated_at: str) -> float:
     return math.exp(-days / max(CONFIG.recency_tau_days, 1.0))
 
 
-def _bm25_to_score(bm25_value: float) -> float:
-    return 1.0 / (1.0 + max(bm25_value, 0.0))
+def _bm25_to_score(bm25_value: float, typical_bm25_scale: float = 1.0) -> float:
+    r = -bm25_value
+    assert r >= 0.0, f"orthodox BM25 value should be non-positive, got {r}"
+    r /= typical_bm25_scale
+    return r / (1.0 + r)
 
 
 def _load_profile(cur, user_id: Optional[str]) -> Dict[str, Any]:
