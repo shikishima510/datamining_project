@@ -77,6 +77,7 @@ def home() -> str:
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.min.js"></script>
   <style>
     :root {
       --bg: #f4efe8;
@@ -232,6 +233,41 @@ def home() -> str:
       border-radius: 8px;
       border: 1px dashed var(--line);
     }
+    .cat-bar-container {
+      margin-bottom: 6px;
+    }
+    .cat-bar-label {
+      font-size: 12px;
+      color: var(--ink);
+      margin-bottom: 2px;
+    }
+    .cat-bar-bg {
+      background: var(--line);
+      border-radius: 4px;
+      height: 14px;
+      overflow: hidden;
+    }
+    .cat-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent-2), #6aa6ff);
+      transition: width 0.3s ease;
+    }
+    .neg-tag {
+      display: inline-block;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #ffdddd;
+      color: #aa3333;
+      margin: 2px;
+    }
+    .profile-section-title {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
@@ -355,12 +391,17 @@ def home() -> str:
 
     <section class="panel">
       <h2>当前用户画像</h2>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn secondary" onclick="loadProfile()">刷新画像</button>
+      </div>
+      <div id="profileVisual">
+        <div id="wordcloudContainer" style="width:100%; height:200px; margin:10px 0;"></div>
+        <div id="categoryBars" style="margin:10px 0;"></div>
+        <div id="negativeTags" style="margin:10px 0;"></div>
+      </div>
       <details>
-        <summary style="cursor:pointer; color: var(--muted); font-size: 13px;">展开查看</summary>
-        <div class="row" style="margin-top:10px;">
-          <button class="btn secondary" onclick="loadProfile()">刷新画像</button>
-        </div>
-        <div id="profileOutput" class="mono"></div>
+        <summary style="cursor:pointer; color: var(--muted); font-size: 13px;">原始数据</summary>
+        <div id="profileOutput" class="mono" style="margin-top:10px;"></div>
       </details>
     </section>
 
@@ -533,7 +574,75 @@ def home() -> str:
       const userId = byId("userId").value;
       if (!userId) return;
       const res = await api(`/profile/${userId}`);
-      byId("profileOutput").textContent = JSON.stringify(res.profile || {}, null, 2);
+      const profile = res.profile || {};
+      
+      byId("profileOutput").textContent = JSON.stringify(profile, null, 2);
+      
+      const termWeights = profile.term_weights || {};
+      const catWeights = profile.category_weights || {};
+      const negTerms = profile.negative_terms || [];
+      const negCats = profile.negative_categories || [];
+      
+      // Word Cloud for term_weights
+      const wcContainer = byId("wordcloudContainer");
+      wcContainer.innerHTML = "";
+      const canvas = document.createElement("canvas");
+      canvas.width = wcContainer.offsetWidth || 300;
+      canvas.height = 200;
+      wcContainer.appendChild(canvas);
+      
+      const terms = Object.entries(termWeights);
+      if (terms.length > 0) {
+        const maxWeight = Math.max(...terms.map(([_,w]) => Math.abs(w)), 1);
+        const wordList = terms
+          .filter(([_,w]) => w > 0)
+          .sort((a,b) => b[1] - a[1])
+          .slice(0, 50)
+          .map(([term, weight]) => [term, Math.max(8, (weight / maxWeight) * 48)]);
+        
+        if (wordList.length > 0 && typeof WordCloud !== 'undefined') {
+          WordCloud(canvas, {
+            list: wordList,
+            gridSize: 8,
+            weightFactor: 1,
+            fontFamily: "IBM Plex Sans, sans-serif",
+            color: function(word, weight) {
+              const hue = 200 + Math.random() * 40;
+              return `hsl(${hue}, 70%, 45%)`;
+            },
+            rotateRatio: 0.3,
+            backgroundColor: "transparent"
+          });
+        }
+      } else {
+        wcContainer.innerHTML = "<div style='color:var(--muted);font-size:12px;text-align:center;padding:20px;'>暂无兴趣词汇</div>";
+      }
+      
+      // Category Bars
+      const catContainer = byId("categoryBars");
+      const catEntries = Object.entries(catWeights).sort((a,b) => b[1] - a[1]).slice(0, 5);
+      if (catEntries.length > 0) {
+        const maxCat = Math.max(...catEntries.map(([_,w]) => Math.abs(w)), 1);
+        catContainer.innerHTML = "<div class='profile-section-title'>类别偏好</div>" + catEntries.map(([cat, weight]) => {
+          const pct = Math.min(100, Math.max(0, (weight / maxCat) * 100));
+          return `<div class="cat-bar-container">
+            <div class="cat-bar-label">${cat} (${weight.toFixed(2)})</div>
+            <div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${pct}%"></div></div>
+          </div>`;
+        }).join("");
+      } else {
+        catContainer.innerHTML = "";
+      }
+      
+      // Negative Terms/Categories
+      const negContainer = byId("negativeTags");
+      const allNeg = [...negTerms, ...negCats];
+      if (allNeg.length > 0) {
+        negContainer.innerHTML = "<div class='profile-section-title'>负向过滤</div>" + 
+          allNeg.map(t => `<span class="neg-tag">${t}</span>`).join("");
+      } else {
+        negContainer.innerHTML = "";
+      }
     }
   </script>
 </body>
