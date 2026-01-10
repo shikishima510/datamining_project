@@ -140,8 +140,7 @@ def main() -> None:
         if args.limit and args.limit > 0:
             all_ids = all_ids[: args.limit]
         id_set: Set[str] = set(all_ids)
-
-        offset = 0
+        print(f"fetching graph for {len(all_ids)} papers")
         batch_size = max(args.batch_size, 1)
         for offset in ranger(0, len(all_ids), batch_size):
             batch = all_ids[offset : offset + batch_size]
