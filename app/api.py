@@ -386,19 +386,25 @@ def home() -> str:
         </div>
       </div>
       <button class="btn" onclick="doEvent()">提交反馈</button>
-      <div id="eventOutput" class="mono" style="margin-top:10px;"></div>
+      <details>
+        <summary style="cursor:pointer; color: var(--muted); font-size: 13px;">反馈日志</summary>
+        <div id="eventOutput" class="mono" style="margin-top:10px;"></div>
+      </details>
     </section>
 
     <section class="panel">
       <h2>当前用户画像</h2>
       <div class="row" style="margin-top:10px;">
-        <button class="btn secondary" onclick="loadProfile()">刷新画像</button>
+        <button class="btn secondary" onclick="loadProfile(true)">刷新画像</button>
       </div>
-      <div id="profileVisual">
-        <div id="wordcloudContainer" style="width:100%; height:200px; margin:10px 0;"></div>
-        <div id="categoryBars" style="margin:10px 0;"></div>
-        <div id="negativeTags" style="margin:10px 0;"></div>
-      </div>
+      <details open>
+        <summary style="cursor:pointer; color: var(--muted); font-size: 13px;">可视化</summary>
+        <div id="profileVisual">
+          <div id="wordcloudContainer" style="width:100%; height:200px; margin:10px 0;"></div>
+          <div id="categoryBars" style="margin:10px 0;"></div>
+          <div id="negativeTags" style="margin:10px 0;"></div>
+        </div>
+      </details>
       <details>
         <summary style="cursor:pointer; color: var(--muted); font-size: 13px;">原始数据</summary>
         <div id="profileOutput" class="mono" style="margin-top:10px;"></div>
@@ -570,13 +576,40 @@ def home() -> str:
       }
     }
 
-    async function loadProfile() {
+    let cachedProfileHash = null;
+
+    function hashProfile(profile) {
+      // Create a hash based on actual content, not version
+      const tw = profile.term_weights || {};
+      const cw = profile.category_weights || {};
+      const nt = profile.negative_terms || [];
+      const nc = profile.negative_categories || [];
+      // Simple string hash of sorted keys and rounded values
+      const termStr = Object.entries(tw).sort((a,b) => a[0].localeCompare(b[0]))
+        .map(([k,v]) => `${k}:${v.toFixed(4)}`).join(",");
+      const catStr = Object.entries(cw).sort((a,b) => a[0].localeCompare(b[0]))
+        .map(([k,v]) => `${k}:${v.toFixed(4)}`).join(",");
+      const negStr = [...nt, ...nc].sort().join(",");
+      return `${termStr}|${catStr}|${negStr}`;
+    }
+
+    async function loadProfile(forceRefresh = false) {
       const userId = byId("userId").value;
       if (!userId) return;
       const res = await api(`/profile/${userId}`);
       const profile = res.profile || {};
       
+      // Update raw JSON always
       byId("profileOutput").textContent = JSON.stringify(profile, null, 2);
+      
+      // Skip visual refresh if content unchanged (unless forced)
+      const newHash = hashProfile(profile);
+      if (!forceRefresh && cachedProfileHash !== null && newHash === cachedProfileHash) {
+        console.log("Profile unchanged, skipping visual refresh");
+        return;
+      }
+      console.log("Profile changed, refreshing visuals. Old hash:", cachedProfileHash, "New hash:", newHash);
+      cachedProfileHash = newHash;
       
       const termWeights = profile.term_weights || {};
       const catWeights = profile.category_weights || {};
