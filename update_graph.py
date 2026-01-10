@@ -10,6 +10,12 @@ from app.config import CONFIG
 from app.db import db_cursor, init_db, now_utc
 from app.graph import pagerank
 
+try:
+    from tqdm import trange as ranger
+except ImportError:
+    print("tqdm not installed, progress bar disabled. Install tqdm for better experience.")
+    ranger = range
+
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
@@ -137,7 +143,7 @@ def main() -> None:
 
         offset = 0
         batch_size = max(args.batch_size, 1)
-        while offset < len(all_ids):
+        for offset in ranger(0, len(all_ids), batch_size):
             batch = all_ids[offset : offset + batch_size]
             batch_edges = fetch_edges_batch(batch)
             for arxiv_id in batch:
@@ -165,7 +171,6 @@ def main() -> None:
                         (int(citation_count), now_utc(), arxiv_id),
                     )
             cur.connection.commit()
-            offset += len(batch)
             if args.sleep > 0:
                 time.sleep(args.sleep)
 

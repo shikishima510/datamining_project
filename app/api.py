@@ -359,6 +359,17 @@ def home() -> str:
         </div>
       </div>
       <div class="row two">
+        <div>
+          <label>日期格式</label>
+          <select id="dateFormat">
+            <option value="rfc2822">RFC 2822 (Thu, 19 Jun 2025)</option>
+            <option value="iso8601">ISO 8601 (2025-06-19)</option>
+            <option value="locale">本地格式</option>
+          </select>
+        </div>
+        <div></div>
+      </div>
+      <div class="row two">
         <button class="btn secondary" onclick="doSearch()">搜索</button>
         <button class="btn" onclick="doFeed()">猜你想看</button>
       </div>
@@ -418,6 +429,36 @@ def home() -> str:
   <script>
     const api = (path, options) => fetch(path, options).then(r => r.json());
     const byId = (id) => document.getElementById(id);
+
+    /**
+     * 格式化日期字符串。
+     * 
+     * 输入格式: ISO 8601 (无微秒)，例如 "2025-06-19T10:23:50+00:00"
+     * 输出格式: 根据 dateFormat 下拉框选择：
+     *   - rfc2822: "Thu, 19 Jun 2025 10:23:50 GMT"
+     *   - iso8601: "2025-06-19T10:23:50+00:00"
+     *   - locale: 本地格式，例如 "2025/6/19 18:23:50"
+     */
+    function formatDate(isoString) {
+      if (!isoString) return "";
+      const format = byId("dateFormat").value;
+      try {
+        const d = new Date(isoString);
+        if (isNaN(d.getTime())) return isoString;
+        switch (format) {
+          case "rfc2822":
+            return d.toUTCString();
+          case "iso8601":
+            return isoString;
+          case "locale":
+            return d.toLocaleString();
+          default:
+            return isoString;
+        }
+      } catch (e) {
+        return isoString;
+      }
+    }
 
     function splitCats(val) {
       return val.split(",").map(s => s.trim()).filter(Boolean);
@@ -538,10 +579,11 @@ def home() -> str:
         const citations = item.citations_count != null ? ` · 引用 ${item.citations_count}` : "";
         const pagerank = item.pagerank_score != null ? ` · PR ${item.pagerank_score.toFixed(4)}` : "";
         const absUrl = item.abs_url || `https://arxiv.org/abs/${item.arxiv_id}`;
+        const formattedDate = formatDate(item.updated_at);
         
         card.innerHTML = `
           <h3><a href="${absUrl}" target="_blank" class="paper-link" onclick="submitAction('${item.arxiv_id}', 'view', false)">${item.title}</a></h3>
-          <div class="meta">${item.arxiv_id} · ${item.primary_category} · ${item.updated_at}${citations}${pagerank}</div>
+          <div class="meta">${item.arxiv_id} · ${item.primary_category} · ${formattedDate}${citations}${pagerank}</div>
           <div>${item.abstract || ""}</div>
           <div class="tags">${tags}</div>
           <div class="mono">score: ${item.score.toFixed(4)}\\nexplain: ${JSON.stringify(item.explain.scores)}</div>

@@ -3,6 +3,7 @@ import logging
 import random
 import time
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
@@ -87,7 +88,45 @@ def select_sets(set_specs: List[str]) -> List[str]:
     return selected
 
 
+def _normalize_rfc2822_to_iso(raw: str) -> str:
+    """
+    将 RFC 2822 格式的日期字符串转换为 ISO 8601 格式（不含微秒）。
+
+    arXiv OAI-PMH 接口返回的日期格式为 RFC 2822，例如：
+        输入: "Thu, 19 Jun 2025 10:23:50 GMT"
+        输出: "2025-06-19T10:23:50+00:00"
+
+    日期格式说明：
+        - RFC 2822: "Thu, 19 Jun 2025 10:23:50 GMT"
+            常见于电子邮件和部分 HTTP 头部，人类可读但不适合字符串排序。
+        - ISO 8601 (无微秒): "2025-06-19T10:23:50+00:00"
+            本项目数据库存储的标准格式，支持字符串字典序比较。
+            例: "2025-01-03T14:30:00+00:00"
+        - ISO 8601 (含微秒): "2025-06-19T10:23:50.123456+00:00"
+            Python datetime.isoformat() 的默认输出，本项目中用于 ingested_at 等时间戳。
+            例: "2025-01-03T14:30:00.123456+00:00"
+
+    Args:
+        raw: RFC 2822 格式的日期字符串。
+
+    Returns:
+        ISO 8601 格式的日期字符串（不含微秒），若解析失败则原样返回。
+    """
+    if not raw:
+        return raw
+    try:
+        dt = parsedate_to_datetime(raw)  # 解析 RFC 2822
+        # 输出 ISO 8601 格式，不含微秒，保留时区
+        return dt.replace(microsecond=0).isoformat()
+    except Exception:
+        return raw
+
+
 def _parse_versions(arxiv_raw: ET.Element) -> Tuple[Optional[str], Optional[str], int]:
+    """解析论文版本信息，返回 (published_at, updated_at, version_count)。
+
+    日期输出格式: ISO 8601 (无微秒)，例如 "2025-06-19T10:23:50+00:00"
+    """
     versions = _findall(arxiv_raw, ".//{*}version")
     if not versions:
         return None, None, 0
@@ -98,8 +137,9 @@ def _parse_versions(arxiv_raw: ET.Element) -> Tuple[Optional[str], Optional[str]
             dates.append(dt)
     if not dates:
         return None, None, len(versions)
-    published_at = dates[0]
-    updated_at = dates[-1]
+    # 转换 RFC 2822 -> ISO 8601 (无微秒)
+    published_at = _normalize_rfc2822_to_iso(dates[0])
+    updated_at = _normalize_rfc2822_to_iso(dates[-1])
     return published_at, updated_at, len(versions)
 
 
