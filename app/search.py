@@ -309,6 +309,12 @@ def get_parser() -> Any:
         return LLMParser()
     return NoOpParser()
 
+def estimated_time_need(days: int) -> int:
+    """
+    About 500 papers per day.
+    """
+    return days * 500
+
 
 def search_papers(
     cur,
@@ -332,7 +338,7 @@ def search_papers(
         structured.categories_include, structured.categories_exclude
     )
     params: List[Any] = []
-    window = max(size * 5 * page, size)
+    window = max(estimated_time_need(days=structured.time_range_days), size)
     if match_expr:
         sql = (
             "SELECT p.*, bm25(papers_fts, ?, ?) as bm25_score "
