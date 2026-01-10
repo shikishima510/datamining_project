@@ -88,12 +88,37 @@ def fetch_edges_batch(arxiv_ids: List[str], max_retry: int = 5) -> dict[str, dic
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--days", type=int, default=180)
-    parser.add_argument("--limit", type=int, default=200)
-    parser.add_argument("--batch-size", type=int, default=200)
-    parser.add_argument("--sleep", type=float, default=0.5)
-    parser.add_argument("--pagerank-iterations", type=int, default=20)
+    parser = argparse.ArgumentParser(description="从 Semantic Scholar 获取论文引用及其数量，构建论文引用图，并计算 PageRank 分数。")
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=180,
+        help="仅处理 updated_at >= (今天 - days) 的已下载数据库中的论文。默认: 180",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        help="最多处理的论文数量。设为 0 或负数表示不限制。默认: 200",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=200,
+        help="每次调用 Semantic Scholar 批量 API 的论文数量。默认: 200",
+    )
+    parser.add_argument(
+        "--sleep",
+        type=float,
+        default=0.5,
+        help="每批 API 请求之间的等待秒数（避免触发限流）。默认: 0.5",
+    )
+    parser.add_argument(
+        "--pagerank-iterations",
+        type=int,
+        default=20,
+        help="PageRank 算法的迭代次数。次数越多收敛越精确，但耗时更长。默认: 20",
+    )
     args = parser.parse_args()
 
     init_db()
