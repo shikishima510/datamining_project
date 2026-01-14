@@ -11,6 +11,10 @@
 
 ## 1) 启动与同步
 
+### 代码准备
+
+使用有lfs的git克隆项目。
+
 ### 环境准备
 ```
 python -m venv .venv
@@ -19,11 +23,14 @@ pip install -r requirements.txt
 ```
 
 ### 同步元数据
+
+data/app.db中已经同步了2025年下半年的元数据。
+
 ```
 python sync_arxiv.py --days 180
 ```
 
-### 启动 API
+### 启动 API 及图形界面
 ```
 python -m app
 ```
@@ -168,4 +175,21 @@ sqlite3 data/app.db "DELETE FROM user_profile;"
 清空已扫描 PDF 记录：
 ```
 sqlite3 data/app.db "DELETE FROM saved_files;"
+```
+
+---
+
+## 10) 性能评估复现
+
+启动api后，运行：
+```bash
+python eval_metrics.py --all
+```
+
+---
+
+## 11) 检查本地数据库论文时间分布
+
+```bash
+python plot_dates.py --mode relative --days 1250 --output plot_dates.png
 ```
