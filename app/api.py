@@ -272,6 +272,44 @@ def home() -> str:
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 6px;
+    }
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+      background: #aaa;
+      box-shadow: none;
+    }
+    .btn:disabled.secondary {
+      background: #aaa;
+    }
+    .loading-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .loading-placeholder .spinner {
+      border: 3px solid var(--line);
+      border-top-color: var(--accent);
+      width: 24px;
+      height: 24px;
+      margin-right: 12px;
+    }
     @media (max-width: 900px) {
       main { grid-template-columns: 1fr; }
     }
@@ -354,8 +392,8 @@ def home() -> str:
           <input id="pageNum" type="number" value="1" min="1" />
         </div>
         <div style="display:flex; gap:8px; align-items:end;">
-          <button class="btn secondary" onclick="changePage(-1)">上一页</button>
-          <button class="btn" onclick="changePage(1)">下一页</button>
+          <button id="btnPrev" class="btn secondary search-btn" onclick="changePage(-1)">上一页</button>
+          <button id="btnNext" class="btn search-btn" onclick="changePage(1)">下一页</button>
         </div>
       </div>
       <div class="row two">
@@ -370,8 +408,8 @@ def home() -> str:
         <div></div>
       </div>
       <div class="row two">
-        <button class="btn secondary" onclick="doSearch()">搜索</button>
-        <button class="btn" onclick="doFeed()">猜你想看</button>
+        <button id="btnSearch" class="btn secondary search-btn" onclick="doSearch()">搜索</button>
+        <button id="btnFeed" class="btn search-btn" onclick="doFeed()">猜你想看</button>
       </div>
       <div class="row">
         <button class="btn" onclick="doScanSaved()">同步该用户已保存 PDF</button>
@@ -464,6 +502,41 @@ def home() -> str:
       return val.split(",").map(s => s.trim()).filter(Boolean);
     }
 
+    // Loading state management for search buttons
+    const searchBtnIds = ["btnSearch", "btnFeed", "btnPrev", "btnNext"];
+    const originalBtnText = {};
+
+    function setSearchLoading(activeButtonId, loadingText) {
+      // Save original text and disable all search buttons
+      searchBtnIds.forEach(id => {
+        const btn = byId(id);
+        if (btn) {
+          if (!originalBtnText[id]) {
+            originalBtnText[id] = btn.innerHTML;
+          }
+          btn.disabled = true;
+          if (id === activeButtonId) {
+            btn.innerHTML = '<span class="spinner"></span>' + loadingText;
+          }
+        }
+      });
+      // Show loading placeholder in results
+      byId("results").innerHTML = '<div class="panel loading-placeholder"><span class="spinner"></span>加载中...</div>';
+    }
+
+    function clearSearchLoading() {
+      // Restore all buttons
+      searchBtnIds.forEach(id => {
+        const btn = byId(id);
+        if (btn) {
+          btn.disabled = false;
+          if (originalBtnText[id]) {
+            btn.innerHTML = originalBtnText[id];
+          }
+        }
+      });
+    }
+
     async function doSync() {
       byId("syncOutput").textContent = "同步中...";
       const payload = {
@@ -487,6 +560,74 @@ def home() -> str:
       if (resetPage) {
         byId("pageNum").value = 1;
       }
+      setSearchLoading("btnSearch", "搜索中...");
+      try {
+        const payload = {
+          user_id: byId("userId").value,
+          raw_query: byId("rawQuery").value,
+          filters: {
+            time_range_days: Number(byId("timeRange").value || 180),
+            categories_include: splitCats(byId("catInclude").value),
+            categories_exclude: splitCats(byId("catExclude").value)
+          },
+          size: Number(byId("resultSize").value || 10),
+          page: Number(byId("pageNum").value || 1)
+        };
+        const res = await api("/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        renderResults(res.results || []);
+      } finally {
+        clearSearchLoading();
+      }
+    }
+
+    async function doFeed(resetPage = true) {
+      lastMode = "feed";
+      if (resetPage) {
+        byId("pageNum").value = 1;
+      }
+      setSearchLoading("btnFeed", "加载中...");
+      try {
+        const payload = {
+          user_id: byId("userId").value,
+          time_range_days: Number(byId("timeRange").value || 180),
+          size: Number(byId("resultSize").value || 10),
+          page: Number(byId("pageNum").value || 1)
+        };
+        const res = await api("/feed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        renderResults(res.results || []);
+      } finally {
+        clearSearchLoading();
+      }
+    }
+
+    async function changePage(delta) {
+      const input = byId("pageNum");
+      let page = Number(input.value || 1) + delta;
+      if (page < 1) page = 1;
+      input.value = page;
+      const btnId = delta < 0 ? "btnPrev" : "btnNext";
+      setSearchLoading(btnId, "翻页中...");
+      try {
+        if (lastMode === "feed") {
+          await doFeedCore();
+        } else {
+          await doSearchCore();
+        }
+      } finally {
+        clearSearchLoading();
+      }
+    }
+
+    // Core functions without loading state (for use by changePage)
+    async function doSearchCore() {
       const payload = {
         user_id: byId("userId").value,
         raw_query: byId("rawQuery").value,
@@ -506,11 +647,7 @@ def home() -> str:
       renderResults(res.results || []);
     }
 
-    async function doFeed(resetPage = true) {
-      lastMode = "feed";
-      if (resetPage) {
-        byId("pageNum").value = 1;
-      }
+    async function doFeedCore() {
       const payload = {
         user_id: byId("userId").value,
         time_range_days: Number(byId("timeRange").value || 180),
@@ -523,18 +660,6 @@ def home() -> str:
         body: JSON.stringify(payload)
       });
       renderResults(res.results || []);
-    }
-
-    function changePage(delta) {
-      const input = byId("pageNum");
-      let page = Number(input.value || 1) + delta;
-      if (page < 1) page = 1;
-      input.value = page;
-      if (lastMode === "feed") {
-        doFeed(false);
-      } else {
-        doSearch(false);
-      }
     }
 
     async function doEvent() {
